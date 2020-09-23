@@ -88,7 +88,7 @@ func NewApplication(config *orm.Config, onConnectCallbacks ...func(Application))
 	store := strpkg.NewStore(config, shutdownSignal)
 	config.SetRuntimeStore(store.ORM)
 
-	wsclient := synchronization.ExplorerClient(&synchronization.NoopWebSocketClient{})
+	wsclient := synchronization.ExplorerClient(&synchronization.NoopExplorerClient{})
 	statsPusher := synchronization.StatsPusher(&synchronization.NoopStatsPusher{})
 	telemetryAgent := telemetry.MonitoringEndpoint(&telemetry.NoopAgent{})
 
