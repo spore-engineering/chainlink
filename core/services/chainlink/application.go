@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/smartcontractkit/chainlink/core/gracefulpanic"
 	"github.com/smartcontractkit/chainlink/core/logger"
@@ -15,6 +16,7 @@ import (
 	"github.com/smartcontractkit/chainlink/core/services/eth"
 	"github.com/smartcontractkit/chainlink/core/services/fluxmonitor"
 	"github.com/smartcontractkit/chainlink/core/services/synchronization"
+	"github.com/smartcontractkit/chainlink/core/services/telemetry"
 	strpkg "github.com/smartcontractkit/chainlink/core/store"
 	"github.com/smartcontractkit/chainlink/core/store/models"
 	"github.com/smartcontractkit/chainlink/core/store/orm"
@@ -73,6 +75,7 @@ type ChainlinkApplication struct {
 	shutdownOnce             sync.Once
 	shutdownSignal           gracefulpanic.Signal
 	balanceMonitor           services.BalanceMonitor
+	telemetryAgent           telemetry.Agent
 }
 
 // NewApplication initializes a new store if one is not already
@@ -84,9 +87,22 @@ func NewApplication(config *orm.Config, onConnectCallbacks ...func(Application))
 	store := strpkg.NewStore(config, shutdownSignal)
 	config.SetRuntimeStore(store.ORM)
 
-	statsPusher := synchronization.NewStatsPusher(
-		store.ORM, config.ExplorerURL(), config.ExplorerAccessKey(), config.ExplorerSecret(),
-	)
+	var wsclient synchronization.WebSocketClient
+	wsclient = &synchronization.NoopWebSocketClient{}
+	if config.ExplorerURL() != nil {
+		wsclient = synchronization.NewWebSocketClient(config.ExplorerURL(), config.ExplorerAccessKey(), config.ExplorerSecret())
+	}
+	statsPusher := synchronization.NewStatsPusher(store.ORM, wsclient)
+	telemetryAgent := telemetry.NewAgent(wsclient)
+
+	// TODO: Remove this, it's just to manually test the explorer integration
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			telemetryAgent.SendLog([]byte{})
+		}
+	}()
+
 	runExecutor := services.NewRunExecutor(store, statsPusher)
 	runQueue := services.NewRunQueue(runExecutor)
 	runManager := services.NewRunManager(runQueue, config, store.ORM, statsPusher, store.TxManager, store.Clock)
@@ -118,6 +134,7 @@ func NewApplication(config *orm.Config, onConnectCallbacks ...func(Application))
 		pendingConnectionResumer: pendingConnectionResumer,
 		shutdownSignal:           shutdownSignal,
 		balanceMonitor:           balanceMonitor,
+		telemetryAgent:           *telemetryAgent,
 	}
 
 	headTrackables := []strpkg.HeadTrackable{gasUpdater}
