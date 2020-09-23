@@ -93,7 +93,7 @@ func NewApplication(config *orm.Config, onConnectCallbacks ...func(Application))
 	telemetryAgent := telemetry.MonitoringEndpoint(&telemetry.NoopAgent{})
 
 	if config.ExplorerURL() != nil {
-		wsclient = synchronization.NewWebSocketClient(config.ExplorerURL(), config.ExplorerAccessKey(), config.ExplorerSecret())
+		wsclient = synchronization.NewExplorerClient(config.ExplorerURL(), config.ExplorerAccessKey(), config.ExplorerSecret())
 		statsPusher = synchronization.NewStatsPusher(store.ORM, wsclient)
 		telemetryAgent = telemetry.NewAgent(wsclient)
 	}
