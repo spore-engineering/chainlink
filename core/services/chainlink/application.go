@@ -76,7 +76,7 @@ type ChainlinkApplication struct {
 	shutdownSignal           gracefulpanic.Signal
 	balanceMonitor           services.BalanceMonitor
 	monitoringEndpoint       telemetry.MonitoringEndpoint
-	wsclient                 synchronization.WebSocketClient
+	wsclient                 synchronization.ExplorerClient
 }
 
 // NewApplication initializes a new store if one is not already
@@ -88,7 +88,7 @@ func NewApplication(config *orm.Config, onConnectCallbacks ...func(Application))
 	store := strpkg.NewStore(config, shutdownSignal)
 	config.SetRuntimeStore(store.ORM)
 
-	wsclient := synchronization.WebSocketClient(&synchronization.NoopWebSocketClient{})
+	wsclient := synchronization.ExplorerClient(&synchronization.NoopWebSocketClient{})
 	statsPusher := synchronization.StatsPusher(&synchronization.NoopStatsPusher{})
 	telemetryAgent := telemetry.MonitoringEndpoint(&telemetry.NoopAgent{})
 
