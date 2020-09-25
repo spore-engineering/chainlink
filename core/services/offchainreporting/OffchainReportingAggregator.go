@@ -8,7 +8,6 @@ import (
 	"time"
 
 	ethereum "github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
 	gethCommon "github.com/ethereum/go-ethereum/common"
 
 	"github.com/smartcontractkit/chainlink/core/services/eth"
@@ -203,6 +202,9 @@ func (ra *OffchainReportingAggregator) ConfigFromLogs(ctx context.Context, chang
 
 func (ra *OffchainReportingAggregator) LatestBlockHeight(ctx context.Context) (blockheight uint64, err error) {
 	h, err := ra.ethClient.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
 	if h == nil {
 		return 0, errors.New("got nil head")
 	}
@@ -218,7 +220,7 @@ func (ra *OffchainReportingAggregator) LatestTransmissionDetails(ctx context.Con
 	return result.ConfigDigest, result.Epoch, result.Round, ocrtypes.Observation(result.LatestAnswer), time.Unix(int64(result.LatestTimestamp), 0), nil
 }
 
-func getConfigSetHash() common.Hash {
+func getConfigSetHash() gethCommon.Hash {
 	abi, err := abi.JSON(strings.NewReader(offchainaggregator.OffchainAggregatorABI))
 	if err != nil {
 		panic("could not parse OffchainAggregator ABI: " + err.Error())
