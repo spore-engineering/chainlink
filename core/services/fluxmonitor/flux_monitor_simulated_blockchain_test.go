@@ -13,6 +13,7 @@ import (
 	"github.com/smartcontractkit/chainlink/core/internal/gethwrappers/generated/flags_wrapper"
 	faw "github.com/smartcontractkit/chainlink/core/internal/gethwrappers/generated/flux_aggregator_wrapper"
 	"github.com/smartcontractkit/chainlink/core/internal/gethwrappers/generated/link_token_interface"
+	"github.com/smartcontractkit/chainlink/core/services/fluxmonitor"
 	"github.com/smartcontractkit/chainlink/core/store/models"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -410,8 +411,7 @@ func TestFluxMonitor_HibernationMode(t *testing.T) {
 	fa := setupFluxAggregatorUniverse(t)
 
 	// raise flag
-	addressZero := [common.AddressLength]byte{}
-	fa.flagsContract.RaiseFlag(fa.sergey, common.Address(addressZero)) // global kill switch
+	fa.flagsContract.RaiseFlag(fa.sergey, fluxmonitor.AddressZero) // global kill switch
 	fa.backend.Commit()
 
 	// Set up chainlink app
