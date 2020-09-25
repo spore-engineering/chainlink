@@ -620,6 +620,29 @@ func (p *PollingDeviationChecker) consumeHibernate() {
 	}
 }
 
+// Hibernate restarts the PollingDeviationChecker in hibernation mode
+func (p *PollingDeviationChecker) Hibernate() {
+	p.Stop()
+	p.chStop, p.waitOnStop = make(chan struct{}), make(chan struct{})
+	go p.consumeHibernate()
+}
+
+// Reactivate restarts the PollingDeviationChecker without hibernation moce
+func (p *PollingDeviationChecker) Reactivate() {
+	p.Stop()
+	p.chStop, p.waitOnStop = make(chan struct{}), make(chan struct{})
+	go p.consume()
+}
+
+// Restart restarts the PollingDeviationChecker, allowing it to enter or exit hibernation mode
+func (p *PollingDeviationChecker) Restart() {
+	p.chStop <- struct{}{}
+	p.Stop()
+	p.chStop = make(chan struct{})
+	p.waitOnStop = make(chan struct{})
+	p.Start()
+}
+
 func (p *PollingDeviationChecker) processLogs() {
 	for !p.backlog.Empty() {
 		maybeBroadcast := p.backlog.Take()
