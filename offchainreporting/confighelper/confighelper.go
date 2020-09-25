@@ -61,7 +61,7 @@ func configDigest(
 
 func ContractConfigFromConfigSetEvent(changed offchainaggregator.OffchainAggregatorConfigSet) types.ContractConfig {
 	return types.ContractConfig{
-		configDigest(
+		ConfigDigest: configDigest(
 			changed.Raw.Address,
 			changed.ConfigCount,
 			changed.Signers,
@@ -70,10 +70,10 @@ func ContractConfigFromConfigSetEvent(changed offchainaggregator.OffchainAggrega
 			changed.EncodedConfigVersion,
 			changed.Encoded,
 		),
-		changed.Signers,
-		changed.Transmitters,
-		changed.Threshold,
-		changed.EncodedConfigVersion,
-		changed.Encoded,
+		Signers:              changed.Signers,
+		Transmitters:         changed.Transmitters,
+		Threshold:            changed.Threshold,
+		EncodedConfigVersion: changed.EncodedConfigVersion,
+		Encoded:              changed.Encoded,
 	}
 }
