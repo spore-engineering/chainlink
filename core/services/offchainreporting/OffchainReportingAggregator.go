@@ -57,7 +57,8 @@ type (
 	}
 
 	Transmitter interface {
-		CreateEthTransaction(toAddress gethCommon.Address, payload []byte) error
+		CreateEthTransaction(ctx context.Context, toAddress gethCommon.Address, payload []byte) error
+		FromAddress() gethCommon.Address
 	}
 )
 
@@ -96,13 +97,13 @@ func NewOffchainReportingAggregator(address gethCommon.Address, ethClient eth.Cl
 	}, nil
 }
 
-func (ra *OffchainReportingAggregator) Transmit(report []byte, rs, ss [][32]byte, vs [32]byte) error {
+func (ra *OffchainReportingAggregator) Transmit(ctx context.Context, report []byte, rs, ss [][32]byte, vs [32]byte) error {
 	payload, err := ra.contractABI.Pack("transmit", report, rs, ss, vs)
 	if err != nil {
 		return errors.Wrap(err, "abi.Pack failed")
 	}
 
-	return errors.Wrap(ra.transmitter.CreateEthTransaction(ra.contractAddress, payload), "failed to send Eth transaction")
+	return errors.Wrap(ra.transmitter.CreateEthTransaction(ctx, ra.contractAddress, payload), "failed to send Eth transaction")
 }
 
 func (ra *OffchainReportingAggregator) SubscribeToNewConfigs(ctx context.Context) (ocrtypes.ContractConfigSubscription, error) {
@@ -223,4 +224,8 @@ func getConfigSetHash() common.Hash {
 		panic("could not parse OffchainAggregator ABI: " + err.Error())
 	}
 	return abi.Events["ConfigSet"].ID
+}
+
+func (ra *OffchainReportingAggregator) FromAddress() gethCommon.Address {
+	return ra.transmitter.FromAddress()
 }

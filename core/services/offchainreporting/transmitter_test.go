@@ -23,9 +23,9 @@ func Test_Transmitter_CreateEthTransaction(t *testing.T) {
 	toAddress := cltest.NewAddress()
 	payload := []byte{1, 2, 3}
 
-	transmitter := offchainreporting.NewTransmitter(context.Background(), db, fromAddress, gasLimit)
+	transmitter := offchainreporting.NewTransmitter(db, fromAddress, gasLimit)
 
-	require.NoError(t, transmitter.CreateEthTransaction(toAddress, payload))
+	require.NoError(t, transmitter.CreateEthTransaction(context.Background(), toAddress, payload))
 
 	etx := models.EthTx{}
 	require.NoError(t, store.ORM.DB.First(&etx).Error)
