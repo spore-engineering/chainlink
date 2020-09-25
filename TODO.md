@@ -1,4 +1,0 @@
-- FM listen to logs on flags contract
-- Add E2E test for FM & Flags contract
-- move pollingdeviation checker to it's own file
-- add hibernate and unHibernate functions to PDT

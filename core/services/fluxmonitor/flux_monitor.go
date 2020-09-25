@@ -28,6 +28,8 @@ import (
 	"github.com/tevino/abool"
 )
 
+const hibernationPollPeriod = 24 * time.Hour
+
 var AddressZero = common.Address([common.AddressLength]byte{})
 
 //go:generate mockery --name Service --output ../../internal/mocks/ --case=underscore
@@ -375,6 +377,7 @@ type PollingDeviationChecker struct {
 	requestData   models.JSON
 	precision     int32
 
+	isHibernating bool
 	connected     *abool.AtomicBool
 	backlog       *utils.BoundedPriorityQueue
 	chProcessLogs chan struct{}
@@ -412,6 +415,7 @@ func NewPollingDeviationChecker(
 		pollTicker:     nil,
 		idleTimer:      nil,
 		roundTimer:     nil,
+		isHibernating:  false,
 		connected:      abool.New(),
 		backlog: utils.NewBoundedPriorityQueue(map[uint]uint{
 			// We want reconnecting nodes to be able to submit to a round
@@ -438,17 +442,14 @@ func (p *PollingDeviationChecker) Start() {
 		"initr", p.initr.ID,
 	)
 
-	isFlagRaised, err := p.isFlagRaised()
+	// TODO - RYAN - async error here instead of panic
+	var err error
+	p.isHibernating, err = p.isFlagRaised()
 	if err != nil {
 		panic(err)
 	}
 
-	if isFlagRaised {
-		go p.consumeHibernate()
-	} else {
-		go p.consume()
-	}
-
+	go p.consume()
 }
 
 func (p *PollingDeviationChecker) isFlagRaised() (bool, error) {
@@ -521,6 +522,8 @@ func (p *PollingDeviationChecker) consume() {
 	connected, unsubscribeLogs := p.fluxAggregator.SubscribeToLogs(p)
 	defer unsubscribeLogs()
 
+	// TODO - RYAN - register flags contract listener
+
 	if connected {
 		p.connected.Set()
 	} else {
@@ -528,21 +531,9 @@ func (p *PollingDeviationChecker) consume() {
 	}
 
 	p.readyForLogs()
-
-	if !p.initr.PollTimer.Disabled {
-		// Try to do an initial poll
-		p.pollIfEligible(DeviationThresholds{
-			Rel: float64(p.initr.Threshold),
-			Abs: float64(p.initr.AbsoluteThreshold),
-		})
-
-		ticker := time.NewTicker(p.initr.PollTimer.Period.Duration())
-		defer ticker.Stop()
-		p.pollTicker = ticker.C
-	}
-	if !p.initr.IdleTimer.Disabled {
-		p.idleTimer = time.After(p.initr.IdleTimer.Duration.Duration())
-	}
+	p.performInitialPoll()
+	p.setPollTimer()
+	p.setIdleTimer()
 
 	for {
 		select {
@@ -585,62 +576,37 @@ func (p *PollingDeviationChecker) consume() {
 	}
 }
 
-func (p *PollingDeviationChecker) consumeHibernate() {
-	defer close(p.waitOnStop)
-
-	connected, unsubscribeLogs := p.fluxAggregator.SubscribeToLogs(p)
-	defer unsubscribeLogs()
-
-	if connected {
-		p.connected.Set()
-	} else {
-		p.connected.UnSet()
+func (p *PollingDeviationChecker) performInitialPoll() {
+	if !p.initr.PollTimer.Disabled && !p.isHibernating {
+		p.pollIfEligible(DeviationThresholds{
+			Rel: float64(p.initr.Threshold),
+			Abs: float64(p.initr.AbsoluteThreshold),
+		})
 	}
+}
 
-	p.readyForLogs()
+func (p *PollingDeviationChecker) setPollTimer() {
+	if !p.initr.PollTimer.Disabled && !p.isHibernating {
+		ticker := time.NewTicker(p.initr.PollTimer.Period.Duration())
+		defer ticker.Stop()
+		p.pollTicker = ticker.C
+	}
+}
 
-	p.idleTimer = time.After(24 * time.Hour)
-
-	for {
-		select {
-		case <-p.chStop:
-			return
-
-		case <-p.chProcessLogs:
-			p.processLogs()
-
-		case <-p.idleTimer:
-			logger.Debugw("Idle ticker fired",
-				"pollPeriod", p.initr.PollTimer.Period,
-				"idleDuration", p.initr.IdleTimer.Duration,
-				"contract", p.initr.Address.Hex(),
-			)
-			p.pollIfEligible(DeviationThresholds{Rel: 0, Abs: 0})
-		}
+func (p *PollingDeviationChecker) setIdleTimer() {
+	if p.isHibernating {
+		p.idleTimer = time.After(hibernationPollPeriod)
+	} else if !p.initr.IdleTimer.Disabled {
+		p.idleTimer = time.After(p.initr.IdleTimer.Duration.Duration())
 	}
 }
 
 // Hibernate restarts the PollingDeviationChecker in hibernation mode
 func (p *PollingDeviationChecker) Hibernate() {
-	p.Stop()
-	p.chStop, p.waitOnStop = make(chan struct{}), make(chan struct{})
-	go p.consumeHibernate()
 }
 
 // Reactivate restarts the PollingDeviationChecker without hibernation moce
 func (p *PollingDeviationChecker) Reactivate() {
-	p.Stop()
-	p.chStop, p.waitOnStop = make(chan struct{}), make(chan struct{})
-	go p.consume()
-}
-
-// Restart restarts the PollingDeviationChecker, allowing it to enter or exit hibernation mode
-func (p *PollingDeviationChecker) Restart() {
-	p.chStop <- struct{}{}
-	p.Stop()
-	p.chStop = make(chan struct{})
-	p.waitOnStop = make(chan struct{})
-	p.Start()
 }
 
 func (p *PollingDeviationChecker) processLogs() {
@@ -1014,6 +980,10 @@ func (p *PollingDeviationChecker) roundState(roundID uint32) (contracts.FluxAggr
 }
 
 func (p *PollingDeviationChecker) resetRoundTimeoutTicker(roundState contracts.FluxAggregatorRoundState) {
+	if p.isHibernating {
+		return
+	}
+
 	loggerFields := p.loggerFields("timesOutAt", roundState.TimesOutAt())
 
 	if roundState.TimesOutAt() == 0 {
